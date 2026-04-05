@@ -83,6 +83,7 @@
   }
 
   function buildNav() {
+    console.log('buildNav called, isAdmin:', isAdmin(), 'role:', role());
     const nav = document.getElementById('sidebarNav');
     const items = [];
     if (isAdmin()) items.push(['dashboard', 'fa-gauge-high', 'Dashboard']);
@@ -95,11 +96,15 @@
       items.push(['settings', 'fa-gear', 'System settings']);
       items.push(['reports', 'fa-chart-bar', 'Reports']);
     }
+    console.log('nav items:', items);
     nav.innerHTML = items.map(([page, icon, label]) =>
       `<div class="nav-item" data-page="${page}" data-nav><span class="nav-icon"><i class="fas ${icon}"></i></span><span class="nav-label">${label}</span></div>`
     ).join('');
     nav.querySelectorAll('[data-nav]').forEach(el => {
-      el.addEventListener('click', () => navigate(el.dataset.page));
+      el.addEventListener('click', () => {
+        console.log('nav clicked:', el.dataset.page);
+        navigate(el.dataset.page);
+      });
     });
     const start = items[0][0];
     navigate(start);
@@ -422,11 +427,15 @@
 
   function showModal(innerHtml) {
     document.getElementById('visitModalBody').innerHTML = innerHtml;
-    document.getElementById('visitModal').style.display = 'flex';
+    const modal = document.getElementById('visitModal');
+    modal.style.display = 'flex';
+    modal.classList.add('open');
   }
 
   function closeModal() {
-    document.getElementById('visitModal').style.display = 'none';
+    const modal = document.getElementById('visitModal');
+    modal.classList.remove('open');
+    modal.style.display = 'none';
   }
 
   async function renderBillsPage() {
@@ -460,7 +469,9 @@
     }).join('');
 
     const reg = document.getElementById('btnRegPat');
+    console.log('btnRegPat element:', reg, 'canSeeMoney:', canSeeMoney(), 'isAdmin:', isAdmin());
     if (reg) {
+      console.log('setting onclick for register patient');
       reg.onclick = () => {
         showModal(`<h3>Register patient</h3>
           <div class="form-row form-row-2"><div><label class="field-label">Name</label><input class="field-input" id="rpName"></div>
@@ -473,17 +484,24 @@
           </div>`);
         document.getElementById('rpX').onclick = closeModal;
         document.getElementById('rpOk').onclick = async () => {
-          await api('/api/patients', {
-            method: 'POST',
-            body: JSON.stringify({
-              name: document.getElementById('rpName').value,
-              gender: document.getElementById('rpG').value,
-              phone: document.getElementById('rpPhone').value,
-              dob: document.getElementById('rpDob').value || null
-            })
-          });
-          closeModal();
-          renderPatientsPage();
+          console.log('registering patient');
+          try {
+            await api('/api/patients', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: document.getElementById('rpName').value,
+                gender: document.getElementById('rpG').value,
+                phone: document.getElementById('rpPhone').value,
+                dob: document.getElementById('rpDob').value || null
+              })
+            });
+            console.log('patient registered');
+            closeModal();
+            renderPatientsPage();
+          } catch (e) {
+            console.error('failed to register patient:', e);
+            toast('Failed to register patient: ' + e.message, 'error');
+          }
         };
       };
     }
@@ -730,12 +748,16 @@
   }
 
   async function init() {
+    console.log('init started');
     try {
       S.me = await api('/api/auth/me');
+      console.log('me:', S.me);
     } catch (_) {
+      console.log('auth failed, redirecting to login');
       window.location.href = '/login';
       return;
     }
+    console.log('role:', role());
     document.getElementById('userName').textContent = S.me.username;
     document.getElementById('userRoleName').textContent = S.me.role;
     document.getElementById('roleBadge').textContent = S.me.role;
@@ -743,6 +765,7 @@
     document.getElementById('userAvatar').textContent = (S.me.username || 'U').slice(0, 2).toUpperCase();
     document.getElementById('headerSub').textContent = 'Signed in as ' + S.me.username;
     document.getElementById('visitModalClose').onclick = closeModal;
+    console.log('building nav');
     buildNav();
     setInterval(() => {
       document.getElementById('liveDate').textContent = new Date().toLocaleString();
