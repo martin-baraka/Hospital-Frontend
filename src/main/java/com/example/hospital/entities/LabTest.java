@@ -40,6 +40,7 @@ public class LabTest {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private Status status = Status.PENDING;
 
     public enum Status {

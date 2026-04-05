@@ -69,12 +69,11 @@ public class UserService {
     }
 
     public User adminCreateUser(String username, String oneTimePassword, User.Role role, boolean active) {
-        User u = User.builder()
-                .username(username)
-                .passwordHash(oneTimePassword)
-                .role(role)
-                .status(active ? "ACTIVE" : "INACTIVE")
-                .build();
+        User u = new User();
+        u.setUsername(username);
+        u.setPasswordHash(oneTimePassword);
+        u.setRole(role);
+        u.setStatus(active ? "ACTIVE" : "INACTIVE");
         saveUser(u);
         return userRepo.findByUsername(username).orElseThrow();
     }

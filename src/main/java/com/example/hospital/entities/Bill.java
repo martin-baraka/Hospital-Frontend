@@ -28,24 +28,30 @@ public class Bill {
     private User cashier;
 
     @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime billDate = LocalDateTime.now();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private Status status = Status.DRAFTED;
 
     @Column(nullable = false, precision = 14, scale = 2)
+    @Builder.Default
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
     private String itemType;
 
     @Column(precision = 14, scale = 2)
+    @Builder.Default
     private BigDecimal paidMobile = BigDecimal.ZERO;
 
     @Column(precision = 14, scale = 2)
+    @Builder.Default
     private BigDecimal paidCash = BigDecimal.ZERO;
 
     @Column(precision = 14, scale = 2)
+    @Builder.Default
     private BigDecimal paidCard = BigDecimal.ZERO;
 
     @Column(precision = 14, scale = 2)

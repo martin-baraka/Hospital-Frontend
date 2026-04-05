@@ -29,6 +29,7 @@ public class Expense {
     private LocalDateTime createdAt;
 
     @Column(name = "supplier_name")
+    @Builder.Default
     private String supplierName = "N/A";
 
     @Column(name = "payment_method")
@@ -38,6 +39,7 @@ public class Expense {
     private BigDecimal amountPaid;
 
     @Column(name = "expense_status")
+    @Builder.Default
     private String expenseStatus = "RECORDED";
 
     @Column(name = "category", length = 512)

@@ -32,20 +32,41 @@ public class DataSetup implements CommandLineRunner {
                     .build());
         }
 
-        ensureUser("admin", "admin123$", User.Role.ADMIN);
-        ensureUser("cashier", "cashier123$", User.Role.CASHIER);
-        ensureUser("clinician", "clinician123$", User.Role.CLINICIAN);
-        ensureUser("lab", "lab123$", User.Role.LAB_TECHNICIAN);
+        ensureUser("admin", "admin123$", "ADMIN");
+        ensureUser("cashier", "cashier123$", "CASHIER");
+        ensureUser("clinician", "clinician123$", "CLINICIAN");
+        ensureUser("lab", "lab123$", "LAB_TECHNICIAN");
+
+        // Sample patient
+        // if (patientRepository.count() == 0) {
+        //     Patient patient = Patient.builder()
+        //             .name("John Doe")
+        //             .gender("Male")
+        //             .phone("1234567890")
+        //             .dob(LocalDate.of(1990, 1, 1))
+        //             .numOfVisits(0)
+        //             .openBalance(BigDecimal.ZERO)
+        //             .build();
+        //     patientRepository.save(patient);
+
+        //     // Sample visit
+        //     Visit visit = Visit.builder()
+        //             .patient(patient)
+        //             .visitDate(LocalDateTime.now())
+        //             .status(Visit.Status.COMPLETED)
+        //             .currentQueue(Visit.VisitQueue.LAB)
+        //             .build();
+        //     visitRepository.save(visit);
+        // }
     }
 
-    private void ensureUser(String username, String rawPassword, User.Role role) {
+    private void ensureUser(String username, String rawPassword, String roleName) {
         if (userService.findByUsername(username).isEmpty()) {
-            User u = User.builder()
-                    .username(username)
-                    .passwordHash(rawPassword)
-                    .role(role)
-                    .status("ACTIVE")
-                    .build();
+            User u = new User();
+            u.setUsername(username);
+            u.setPasswordHash(rawPassword);
+            u.setRole(User.Role.valueOf(roleName));
+            u.setStatus("ACTIVE");
             userService.saveUser(u);
             System.out.println("Seeded user: " + username + " / " + rawPassword);
         }

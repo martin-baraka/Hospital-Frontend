@@ -29,6 +29,7 @@ public class Patient {
     private LocalDateTime lastVisit;
 
     @Column(name = "num_of_visits")
+    @Builder.Default
     private Integer numOfVisits = 0;
 
     private LocalDate dob;
@@ -41,6 +42,7 @@ public class Patient {
     private LocalDateTime registrationDate;
 
     @Column(name = "open_balance", precision = 14, scale = 2)
+    @Builder.Default
     private BigDecimal openBalance = BigDecimal.ZERO;
 
     @PrePersist

@@ -69,7 +69,8 @@
       inventory: 'Inventory',
       accounting: 'Accounting',
       settings: 'System settings',
-      reports: 'Reports'
+      reports: 'Reports',
+      lab: 'Lab'
     };
     document.getElementById('headerTitle').textContent = titles[page] || page;
     if (page === 'dashboard') renderDashboard();
@@ -80,21 +81,27 @@
     if (page === 'accounting') renderAccountingPage();
     if (page === 'settings') renderSettingsPage();
     if (page === 'reports') renderReportsPage();
+    if (page === 'lab') renderLabPage();
   }
 
   function buildNav() {
     console.log('buildNav called, isAdmin:', isAdmin(), 'role:', role());
     const nav = document.getElementById('sidebarNav');
     const items = [];
-    if (isAdmin()) items.push(['dashboard', 'fa-gauge-high', 'Dashboard']);
-    items.push(['visits', 'fa-calendar-check', 'Visits']);
-    if (isAdmin() || isCashier()) items.push(['bills', 'fa-file-invoice-dollar', 'Bills']);
-    items.push(['patients', 'fa-users', 'Patients']);
-    if (isAdmin()) items.push(['inventory', 'fa-boxes-stacked', 'Inventory']);
-    if (isAdmin() || isCashier()) items.push(['accounting', 'fa-coins', 'Accounting']);
-    if (isAdmin()) {
-      items.push(['settings', 'fa-gear', 'System settings']);
-      items.push(['reports', 'fa-chart-bar', 'Reports']);
+    if (role() === 'LAB_TECHNICIAN') {
+      items.push(['lab', 'fa-flask', 'Lab']);
+      items.push(['patients', 'fa-users', 'Patients']);
+    } else {
+      if (isAdmin()) items.push(['dashboard', 'fa-gauge-high', 'Dashboard']);
+      items.push(['visits', 'fa-calendar-check', 'Visits']);
+      if (isAdmin() || isCashier()) items.push(['bills', 'fa-file-invoice-dollar', 'Bills']);
+      items.push(['patients', 'fa-users', 'Patients']);
+      if (isAdmin()) items.push(['inventory', 'fa-boxes-stacked', 'Inventory']);
+      if (isAdmin() || isCashier()) items.push(['accounting', 'fa-coins', 'Accounting']);
+      if (isAdmin()) {
+        items.push(['settings', 'fa-gear', 'System settings']);
+        items.push(['reports', 'fa-chart-bar', 'Reports']);
+      }
     }
     console.log('nav items:', items);
     nav.innerHTML = items.map(([page, icon, label]) =>
@@ -745,6 +752,107 @@
     }
     const r = await api('/api/reports/summary');
     el.innerHTML = `<div class="card card-body"><p>${escapeHtml(r.message)}</p></div>`;
+  }
+
+  async function renderLabPage() {
+    const el = document.getElementById('page-lab');
+    el.innerHTML = `<div class="section-header"><div><div class="section-title">Lab Tests</div></div>
+      <button type="button" class="btn btn-primary" id="btnNewLabTest"><i class="fas fa-plus"></i> New Test</button></div>
+      <div class="card"><div class="table-wrap"><table><thead><tr><th>Patient</th><th>Test Name</th><th>Status</th><th>Result</th><th>Technician</th><th></th></tr></thead><tbody id="labTestsBody"></tbody></table></div></div>`;
+
+    document.getElementById('btnNewLabTest').onclick = () => openNewLabTestForm();
+    await loadLabTests();
+  }
+
+  async function loadLabTests() {
+    const tests = await api('/api/lab/tests');
+    const tb = document.getElementById('labTestsBody');
+    if (!tb) return;
+    tb.innerHTML = tests.map(t => `<tr>
+      <td>${escapeHtml(t.patientName)}</td>
+      <td>${escapeHtml(t.testName)}</td>
+      <td><span class="badge badge-${t.status === 'COMPLETED' ? 'green' : 'amber'}">${t.status}</span></td>
+      <td>${escapeHtml(t.result || '')}</td>
+      <td>${escapeHtml(t.labTechnician || 'Unassigned')}</td>
+      <td><button type="button" class="btn btn-sm btn-secondary" data-edit-test="${t.id}">Edit</button></td>
+    </tr>`).join('') || '<tr><td colspan="6">No lab tests</td></tr>';
+    tb.querySelectorAll('[data-edit-test]').forEach(b => {
+      b.onclick = () => openEditLabTestForm(+b.dataset.editTest);
+    });
+  }
+
+  async function openNewLabTestForm() {
+    if (!S.visits) S.visits = await api('/api/visits');
+    const opts = S.visits.map(v => `<option value="${v.id}">${escapeHtml(v.patientName)} - ${v.visitDate}</option>`).join('');
+    showModal(`
+      <p class="field-label">Select Visit</p>
+      <select class="field-select" id="labVisit"><option value="">— Select Visit —</option>${opts}</select>
+      <div class="form-row">
+        <div><label class="field-label">Test Name *</label><input class="field-input" id="labTestName"></div>
+      </div>
+      <div class="modal-footer" style="margin-top:16px;padding:0;border:0">
+        <button type="button" class="btn btn-secondary" id="labCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="labSave">Create Test</button>
+      </div>`);
+    document.getElementById('labCancel').onclick = closeModal;
+    document.getElementById('labSave').onclick = async () => {
+      const visitId = +document.getElementById('labVisit').value;
+      const testName = document.getElementById('labTestName').value.trim();
+      if (!visitId || !testName) return toast('Please fill all fields', 'error');
+      try {
+        const result = await api('/api/lab/tests', { method: 'POST', body: JSON.stringify({ visitId, testName }) });
+        console.log('Lab test created:', result);
+        closeModal();
+        await loadLabTests();
+        toast('Lab test created', 'success');
+      } catch (e) {
+        console.error('Error creating lab test:', e);
+        const errMsg = e.message || 'Failed to create test';
+        toast(errMsg, 'error');
+      }
+    };
+  }
+
+  async function openEditLabTestForm(id) {
+    const tests = await api('/api/lab/tests');
+    const test = tests.find(t => t.id === id);
+    if (!test) return;
+    showModal(`
+      <p class="field-label">Test: ${escapeHtml(test.testName)}</p>
+      <p class="field-label">Patient: ${escapeHtml(test.patientName)}</p>
+      <div class="form-row">
+        <div><label class="field-label">Result</label><textarea class="field-input" id="labResult">${escapeHtml(test.result || '')}</textarea></div>
+      </div>
+      <div class="form-row">
+        <div><label class="field-label">Reference Range</label><input class="field-input" id="labRange" value="${escapeHtml(test.referenceRange || '')}"></div>
+      </div>
+      <div class="form-row">
+        <div><label class="field-label">Notes</label><textarea class="field-input" id="labNotes">${escapeHtml(test.notes || '')}</textarea></div>
+      </div>
+      <div class="form-row">
+        <div><label class="field-label">Status</label><select class="field-select" id="labStatus"><option value="PENDING" ${test.status === 'PENDING' ? 'selected' : ''}>Pending</option><option value="COMPLETED" ${test.status === 'COMPLETED' ? 'selected' : ''}>Completed</option></select></div>
+      </div>
+      <div class="modal-footer" style="margin-top:16px;padding:0;border:0">
+        <button type="button" class="btn btn-secondary" id="labEditCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="labEditSave">Save</button>
+      </div>`);
+    document.getElementById('labEditCancel').onclick = closeModal;
+    document.getElementById('labEditSave').onclick = async () => {
+      const body = {
+        result: document.getElementById('labResult').value,
+        referenceRange: document.getElementById('labRange').value,
+        notes: document.getElementById('labNotes').value,
+        status: document.getElementById('labStatus').value
+      };
+      try {
+        await api('/api/lab/tests/' + id, { method: 'PUT', body: JSON.stringify(body) });
+        closeModal();
+        await loadLabTests();
+        toast('Lab test updated', 'success');
+      } catch (e) {
+        toast('Failed to update test', 'error');
+      }
+    };
   }
 
   async function init() {

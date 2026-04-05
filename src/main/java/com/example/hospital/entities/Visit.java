@@ -26,15 +26,18 @@ public class Visit {
     private User clinician;
 
     @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime visitDate = LocalDateTime.now();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private Status status = Status.DRAFTED;
 
     /** Current station in the workflow */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private VisitQueue currentQueue = VisitQueue.CASHIER;
 
     @Column(columnDefinition = "TEXT")
