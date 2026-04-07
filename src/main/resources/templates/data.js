@@ -150,5 +150,17 @@ function navigate(page) {
 // ── Logout ──
 function logout() {
   sessionStorage.removeItem('hms_user');
-  window.location.href = 'login.html';
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/logout';
+  const csrf = document.querySelector('input[name="_csrf"]');
+  if (csrf) {
+    const tokenInput = document.createElement('input');
+    tokenInput.type = 'hidden';
+    tokenInput.name = '_csrf';
+    tokenInput.value = csrf.value;
+    form.appendChild(tokenInput);
+  }
+  document.body.appendChild(form);
+  form.submit();
 }

@@ -16,8 +16,18 @@ public class WebController {
         return "login";
     }
 
+    @GetMapping("/login.html")
+    public String loginHtmlAlias() {
+        return "redirect:/login";
+    }
+
     @GetMapping("/hms")
     public String hmsApp() {
         return "hms";
+    }
+
+    @GetMapping({"/app", "/app.html"})
+    public String appAlias() {
+        return "redirect:/hms";
     }
 }

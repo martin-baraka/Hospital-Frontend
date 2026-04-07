@@ -720,19 +720,17 @@
           const qty = +document.getElementById('rcvQty').value || 0;
           const lineTotal = +document.getElementById('rcvLineTotal').value || 0;
           if (!sid || !pid || qty <= 0) return toast('Supplier, product and quantity are required', 'error');
-          const ub = qty > 0 ? lineTotal / qty : 0;
           const totPay = +document.getElementById('rcvTot').value || lineTotal;
           const paid = +document.getElementById('rcvPaid').value || 0;
           const body = {
-            supplier: { id: sid },
+            supplierId: sid,
             dateReceived: document.getElementById('rcvDate').value || new Date().toISOString().slice(0, 10),
             paymentMethod: document.getElementById('rcvPM').value || 'CASH',
             totalPaymentAmount: totPay,
             paidAmount: paid,
-            balanceDue: totPay - paid,
-            lines: [{ product: { id: pid }, quantityReceived: qty, totalProductPrice: lineTotal, unitBuyingPrice: ub }]
+            lines: [{ productId: pid, quantityReceived: qty, totalProductPrice: lineTotal }]
           };
-          await api('/api/stock-receipts', { method: 'POST', body: JSON.stringify(body) });
+          await api('/api/stock-receipts/guided', { method: 'POST', body: JSON.stringify(body) });
           closeModal();
           toast('Receipt posted', 'info');
           renderInventoryPage();
@@ -880,17 +878,24 @@
     const r = await api('/api/reports/summary?startDate=' + encodeURIComponent(start) + '&endDate=' + encodeURIComponent(end));
     const a = r.analytics || {};
     el.innerHTML = `<div class="section-header"><div><div class="section-title">Reports and analytics</div></div>
-      <button type="button" class="btn btn-primary btn-sm" id="expCsv">Export CSV</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-primary btn-sm" id="expCsv">Export CSV</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="expJson">Export JSON</button></div></div>
       <div class="stats-grid">
         <div class="stat-card teal"><div class="stat-value">${a.patientsServed ?? 0}</div><div class="stat-label">Patients served</div></div>
         <div class="stat-card green"><div class="stat-value">${a.newRegistrations ?? 0}</div><div class="stat-label">New registrations</div></div>
         <div class="stat-card purple"><div class="stat-value">${a.totalRevenue ?? 0}</div><div class="stat-label">Total revenue</div></div>
+        <div class="stat-card blue"><div class="stat-value">${a.productRevenue ?? 0}</div><div class="stat-label">Product revenue</div></div>
+        <div class="stat-card blue"><div class="stat-value">${a.serviceRevenue ?? 0}</div><div class="stat-label">Service revenue</div></div>
         <div class="stat-card red"><div class="stat-value">${a.totalExpenses ?? 0}</div><div class="stat-label">Total expenses</div></div>
         <div class="stat-card amber"><div class="stat-value">${a.profitLoss ?? 0}</div><div class="stat-label">Profit / loss</div></div>
+        <div class="stat-card indigo"><div class="stat-value">${a.averageRevenuePerPatient ?? 0}</div><div class="stat-label">Avg revenue/patient</div></div>
         <div class="stat-card teal"><div class="stat-value">${a.averageItemsPerCompletedVisit ?? 0}</div><div class="stat-label">Avg billed items/visit</div></div>
       </div>`;
     document.getElementById('expCsv').onclick = () => {
       window.open('/api/reports/export/csv?startDate=' + encodeURIComponent(start) + '&endDate=' + encodeURIComponent(end), '_blank');
+    };
+    document.getElementById('expJson').onclick = () => {
+      window.open('/api/reports/export/json?startDate=' + encodeURIComponent(start) + '&endDate=' + encodeURIComponent(end), '_blank');
     };
   }
 

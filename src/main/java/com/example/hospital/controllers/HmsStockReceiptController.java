@@ -45,7 +45,9 @@ public class HmsStockReceiptController {
     }
 
     public record GuidedReceiptLine(int productId, int quantityReceived, BigDecimal totalProductPrice) {}
-    public record GuidedReceiptRequest(Integer supplierId, List<GuidedReceiptLine> lines) {}
+    public record GuidedReceiptRequest(Integer supplierId, String dateReceived, String paymentMethod,
+                                       BigDecimal totalPaymentAmount, BigDecimal paidAmount,
+                                       List<GuidedReceiptLine> lines) {}
 
     @PostMapping("/guided")
     public ResponseEntity<StockReceipt> createGuidedReceipt(Authentication auth,
@@ -59,6 +61,11 @@ public class HmsStockReceiptController {
         Supplier supplier = new Supplier();
         supplier.setId(request.supplierId());
         receipt.setSupplier(supplier);
+        receipt.setDateReceived(request.dateReceived() != null ? java.time.LocalDate.parse(request.dateReceived()) : java.time.LocalDate.now());
+        receipt.setPaymentMethod(request.paymentMethod() != null ? request.paymentMethod() : "CASH");
+        receipt.setTotalPaymentAmount(request.totalPaymentAmount() != null ? request.totalPaymentAmount() : java.math.BigDecimal.ZERO);
+        receipt.setPaidAmount(request.paidAmount() != null ? request.paidAmount() : java.math.BigDecimal.ZERO);
+        receipt.setBalanceDue(receipt.getTotalPaymentAmount().subtract(receipt.getPaidAmount()));
         receipt.setLines(request.lines().stream().map(line -> {
             StockReceiptLine item = new StockReceiptLine();
             Product product = new Product();

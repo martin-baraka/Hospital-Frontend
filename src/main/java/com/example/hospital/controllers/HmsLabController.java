@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -30,6 +31,10 @@ public class HmsLabController {
         this.labTestService = labTestService;
         this.userRepository = userRepository;
         this.visitRepository = visitRepository;
+    }
+
+    private boolean isLabOrAdmin(User user) {
+        return user.getRole() == User.Role.LAB_TECHNICIAN || user.getRole() == User.Role.ADMIN;
     }
 
     @GetMapping("/tests")
@@ -58,6 +63,9 @@ public class HmsLabController {
                 return ResponseEntity.status(401).body("User not found");
             }
             User user = userOpt.get();
+            if (!isLabOrAdmin(user)) {
+                return ResponseEntity.status(403).body("Only lab users can create tests in lab module");
+            }
 
             Object visitIdObj = body.get("visitId");
             Integer visitId = null;
@@ -109,12 +117,19 @@ public class HmsLabController {
     @PutMapping("/tests/{id}")
     public ResponseEntity<LabTest> updateLabTest(@PathVariable Integer id, @RequestBody Map<String, Object> body, Authentication auth) {
         User user = userRepository.findByUsername(auth.getName()).orElseThrow();
+        if (!isLabOrAdmin(user)) {
+            return ResponseEntity.status(403).build();
+        }
         Optional<LabTest> opt = labTestService.getById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
         LabTest test = opt.get();
-        // Check permission
-        if (user.getRole() != User.Role.ADMIN && (test.getLabTechnician() == null || !test.getLabTechnician().getId().equals(user.getId()))) {
-            return ResponseEntity.status(403).build();
+        // Lab tech can claim unassigned tests; otherwise must be assigned to them (admin bypasses).
+        if (user.getRole() == User.Role.LAB_TECHNICIAN) {
+            if (test.getLabTechnician() == null) {
+                test.setLabTechnician(user);
+            } else if (!test.getLabTechnician().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).build();
+            }
         }
         if (body.containsKey("result")) test.setResult((String) body.get("result"));
         if (body.containsKey("referenceRange")) test.setReferenceRange((String) body.get("referenceRange"));
@@ -145,16 +160,16 @@ public class HmsLabController {
     }
 
     private Map<String, Object> labTestRow(LabTest t) {
-        return Map.of(
-                "id", t.getId(),
-                "visitId", t.getVisitId(),
-                "patientName", t.getVisit().getPatient().getName(),
-                "testName", t.getTestName(),
-                "result", t.getResult(),
-                "referenceRange", t.getReferenceRange(),
-                "notes", t.getNotes(),
-                "status", t.getStatus().name(),
-                "labTechnician", t.getLabTechnician() != null ? t.getLabTechnician().getUsername() : null
-        );
+        Map<String, Object> row = new HashMap<>();
+        row.put("id", t.getId());
+        row.put("visitId", t.getVisitId());
+        row.put("patientName", t.getVisit() != null && t.getVisit().getPatient() != null ? t.getVisit().getPatient().getName() : "");
+        row.put("testName", t.getTestName() != null ? t.getTestName() : "");
+        row.put("result", t.getResult() != null ? t.getResult() : "");
+        row.put("referenceRange", t.getReferenceRange() != null ? t.getReferenceRange() : "");
+        row.put("notes", t.getNotes() != null ? t.getNotes() : "");
+        row.put("status", t.getStatus() != null ? t.getStatus().name() : "PENDING");
+        row.put("labTechnician", t.getLabTechnician() != null ? t.getLabTechnician().getUsername() : "");
+        return row;
     }
 }
