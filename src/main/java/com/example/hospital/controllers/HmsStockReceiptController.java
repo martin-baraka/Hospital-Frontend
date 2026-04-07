@@ -1,6 +1,9 @@
 package com.example.hospital.controllers;
 
+import com.example.hospital.entities.Product;
 import com.example.hospital.entities.StockReceipt;
+import com.example.hospital.entities.StockReceiptLine;
+import com.example.hospital.entities.Supplier;
 import com.example.hospital.entities.User;
 import com.example.hospital.repositories.UserRepository;
 import com.example.hospital.services.StockReceiptService;
@@ -8,7 +11,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/stock-receipts")
@@ -36,6 +41,35 @@ public class HmsStockReceiptController {
     @PostMapping
     public ResponseEntity<StockReceipt> create(Authentication auth, @RequestBody StockReceipt receipt) {
         if (!admin(auth)) return ResponseEntity.status(403).build();
+        return ResponseEntity.ok(stockReceiptService.createReceipt(receipt));
+    }
+
+    public record GuidedReceiptLine(int productId, int quantityReceived, BigDecimal totalProductPrice) {}
+    public record GuidedReceiptRequest(Integer supplierId, List<GuidedReceiptLine> lines) {}
+
+    @PostMapping("/guided")
+    public ResponseEntity<StockReceipt> createGuidedReceipt(Authentication auth,
+                                                            @RequestBody GuidedReceiptRequest request) {
+        if (!admin(auth)) return ResponseEntity.status(403).build();
+        if (request.supplierId() == null || request.lines() == null || request.lines().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        StockReceipt receipt = new StockReceipt();
+        Supplier supplier = new Supplier();
+        supplier.setId(request.supplierId());
+        receipt.setSupplier(supplier);
+        receipt.setLines(request.lines().stream().map(line -> {
+            StockReceiptLine item = new StockReceiptLine();
+            Product product = new Product();
+            product.setId(line.productId());
+            item.setProduct(product);
+            item.setQuantityReceived(line.quantityReceived());
+            item.setTotalProductPrice(line.totalProductPrice());
+            item.setReceipt(receipt);
+            return item;
+        }).collect(Collectors.toList()));
+
         return ResponseEntity.ok(stockReceiptService.createReceipt(receipt));
     }
 }

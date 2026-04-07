@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class VisitWorkflowService {
@@ -148,8 +149,37 @@ public class VisitWorkflowService {
     @Transactional
     public Visit forward(int visitId, Visit.VisitQueue queue) {
         Visit v = visitRepo.findById(visitId).orElseThrow();
+        validateWorkflowTransition(v, queue);
         v.setCurrentQueue(queue);
         return visitRepo.save(v);
+    }
+
+    private void validateWorkflowTransition(Visit visit, Visit.VisitQueue targetQueue) {
+        Visit.VisitQueue currentQueue = visit.getCurrentQueue();
+        if (currentQueue == targetQueue) {
+            return;
+        }
+        Set<Visit.VisitQueue> allowedTargets = switch (currentQueue) {
+            case CASHIER -> Set.of(Visit.VisitQueue.CLINICIAN, Visit.VisitQueue.LAB);
+            case CLINICIAN -> Set.of(Visit.VisitQueue.CASHIER);
+            case LAB -> Set.of(Visit.VisitQueue.CLINICIAN);
+        };
+        if (!allowedTargets.contains(targetQueue)) {
+            throw new IllegalStateException("Workflow transition not allowed: " + currentQueue + " -> " + targetQueue);
+        }
+
+        if (currentQueue == Visit.VisitQueue.CASHIER && targetQueue == Visit.VisitQueue.LAB) {
+            Bill bill = billRepo.findByVisit_Id(visit.getId()).orElseThrow();
+            if (bill.getOpenBalance() != null && bill.getOpenBalance().compareTo(Z) > 0) {
+                throw new IllegalStateException("Lab tests require cashier billing clearance before forwarding to lab");
+            }
+            long pendingTests = labTestRepo.findByVisit_IdOrderByIdAsc(visit.getId()).stream()
+                    .filter(t -> t.getStatus() == LabTest.Status.PENDING)
+                    .count();
+            if (pendingTests == 0) {
+                throw new IllegalStateException("Order at least one pending lab test before forwarding to lab");
+            }
+        }
     }
 
     @Transactional

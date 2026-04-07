@@ -274,11 +274,28 @@
 
     let clin = '';
     if ((isClinician() || isAdmin()) && v.currentQueue === 'CLINICIAN') {
-      clin = `<h4 style="margin:12px 0 8px">Clinical</h4>
-        <label class="field-label">Vitals</label><textarea class="field-textarea" id="clVitals">${escapeHtml(v.vitals || '')}</textarea>
-        <label class="field-label">Diagnosis</label><textarea class="field-textarea" id="clDx">${escapeHtml(v.diagnosis || '')}</textarea>
-        <label class="field-label">Notes</label><textarea class="field-textarea" id="clNotes">${escapeHtml(v.notes || '')}</textarea>
-        <button type="button" class="btn btn-primary btn-sm" id="btnClSave">Save clinical</button>`;
+      const labRowsForDoctor = (S.visitDetail.labTests || []).map(t => `<tr>
+        <td>${escapeHtml(t.testName)}</td>
+        <td>${escapeHtml(t.result || '')}</td>
+        <td>${escapeHtml(t.referenceRange || '')}</td>
+        <td>${escapeHtml(t.notes || '')}</td>
+        <td>${t.status}</td>
+      </tr>`).join('') || '<tr><td colspan="5">No lab tests</td></tr>';
+      clin = `
+        <h4 style="margin:12px 0 8px">Doctor workspace</h4>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button type="button" class="btn btn-sm btn-secondary" data-doc-tab="diagnosis">Diagnosis</button>
+          <button type="button" class="btn btn-sm" data-doc-tab="lab">Lab results</button>
+        </div>
+        <div id="docTabDiagnosis">
+          <label class="field-label">Vitals</label><textarea class="field-textarea" id="clVitals">${escapeHtml(v.vitals || '')}</textarea>
+          <label class="field-label">Diagnosis</label><textarea class="field-textarea" id="clDx">${escapeHtml(v.diagnosis || '')}</textarea>
+          <label class="field-label">Notes</label><textarea class="field-textarea" id="clNotes">${escapeHtml(v.notes || '')}</textarea>
+          <button type="button" class="btn btn-primary btn-sm" id="btnClSave">Save diagnosis</button>
+        </div>
+        <div id="docTabLab" style="display:none">
+          <table class="table-wrap"><thead><tr><th>Test</th><th>Result</th><th>Ref</th><th>Notes</th><th>Status</th></tr></thead><tbody>${labRowsForDoctor}</tbody></table>
+        </div>`;
     }
 
     let cashierNotes = '';
@@ -309,9 +326,9 @@
       ${payForm}
       ${lab}
       <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px">
-        <button type="button" class="btn btn-secondary btn-sm" data-fw="CASHIER">Forward cashier</button>
-        <button type="button" class="btn btn-secondary btn-sm" data-fw="CLINICIAN">Forward clinician</button>
-        <button type="button" class="btn btn-secondary btn-sm" data-fw="LAB">Forward lab</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-fw="CASHIER">Send to cashier (billing)</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-fw="CLINICIAN">Send to doctor</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-fw="LAB">Send to lab</button>
         <button type="button" class="btn btn-success btn-sm" id="btnCompleteVisit">Complete visit</button>
         <button type="button" class="btn btn-outline btn-sm" id="btnCloseVisit">Close</button>
       </div>`);
@@ -378,6 +395,17 @@
         toast('Clinical data saved', 'info');
       };
     }
+    document.querySelectorAll('[data-doc-tab]').forEach(b => {
+      b.onclick = () => {
+        const isDiagnosis = b.dataset.docTab === 'diagnosis';
+        const diag = document.getElementById('docTabDiagnosis');
+        const labTab = document.getElementById('docTabLab');
+        if (diag && labTab) {
+          diag.style.display = isDiagnosis ? 'block' : 'none';
+          labTab.style.display = isDiagnosis ? 'none' : 'block';
+        }
+      };
+    });
     const btnCs = document.getElementById('btnCsNotes');
     if (btnCs) {
       btnCs.onclick = async () => {
@@ -556,13 +584,35 @@
           <td><button type="button" class="btn btn-sm" data-adj="${p.id}">Qty</button></td></tr>`).join('')}
         </tbody></table></div>`;
       document.getElementById('addProd').onclick = async () => {
-        const name = prompt('Product name');
-        if (!name) return;
-        await api('/api/products', {
-          method: 'POST',
-          body: JSON.stringify({ name, quantity: 0, unitSellingPrice: 0, lastBuyPrice: 0, reorderLevel: 5, inactive: false, expires: false })
-        });
-        renderInventoryPage();
+        showModal(`<h3>Add product</h3>
+          <div class="form-row form-row-2"><div><label class="field-label">Name *</label><input class="field-input" id="prodName"></div>
+          <div><label class="field-label">Opening quantity</label><input type="number" class="field-input" id="prodQty" value="0"></div></div>
+          <div class="form-row form-row-3"><div><label class="field-label">Selling price</label><input type="number" class="field-input" id="prodSell" value="0"></div>
+          <div><label class="field-label">Buying price</label><input type="number" class="field-input" id="prodBuy" value="0"></div>
+          <div><label class="field-label">Reorder level</label><input type="number" class="field-input" id="prodReorder" value="5"></div></div>
+          <div class="modal-footer" style="margin-top:12px;padding:0;border:0">
+            <button type="button" class="btn btn-secondary" id="prodCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="prodSave">Save product</button>
+          </div>`);
+        document.getElementById('prodCancel').onclick = closeModal;
+        document.getElementById('prodSave').onclick = async () => {
+          const name = document.getElementById('prodName').value.trim();
+          if (!name) return toast('Product name is required', 'error');
+          await api('/api/products', {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              quantity: +document.getElementById('prodQty').value || 0,
+              unitSellingPrice: +document.getElementById('prodSell').value || 0,
+              lastBuyPrice: +document.getElementById('prodBuy').value || 0,
+              reorderLevel: +document.getElementById('prodReorder').value || 5,
+              inactive: false,
+              expires: false
+            })
+          });
+          closeModal();
+          renderInventoryPage();
+        };
       };
       document.querySelectorAll('[data-adj]').forEach(b => {
         b.onclick = async () => {
@@ -581,11 +631,30 @@
         ${services.map(s => `<tr><td>${escapeHtml(s.name)}</td><td>${s.price}</td><td>${s.inactive}</td></tr>`).join('')}
         </tbody></table></div>`;
       document.getElementById('addSvc').onclick = async () => {
-        const name = prompt('Service name');
-        const price = +prompt('Price');
-        if (!name) return;
-        await api('/api/services', { method: 'POST', body: JSON.stringify({ name, price, inactive: false, category: 'General' }) });
-        renderInventoryPage();
+        showModal(`<h3>Add service</h3>
+          <div class="form-row form-row-2"><div><label class="field-label">Service name *</label><input class="field-input" id="svcName"></div>
+          <div><label class="field-label">Price</label><input type="number" class="field-input" id="svcPrice" value="0"></div></div>
+          <div class="form-row"><div><label class="field-label">Category</label><input class="field-input" id="svcCat" value="General"></div></div>
+          <div class="modal-footer" style="margin-top:12px;padding:0;border:0">
+            <button type="button" class="btn btn-secondary" id="svcCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="svcSave">Save service</button>
+          </div>`);
+        document.getElementById('svcCancel').onclick = closeModal;
+        document.getElementById('svcSave').onclick = async () => {
+          const name = document.getElementById('svcName').value.trim();
+          if (!name) return toast('Service name is required', 'error');
+          await api('/api/services', {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              price: +document.getElementById('svcPrice').value || 0,
+              inactive: false,
+              category: document.getElementById('svcCat').value || 'General'
+            })
+          });
+          closeModal();
+          renderInventoryPage();
+        };
       };
     }
     function showSuppliers() {
@@ -595,13 +664,30 @@
         ${suppliers.map(s => `<tr><td>${escapeHtml(s.name)}</td><td>${s.phone || ''}</td><td>${s.email || ''}</td><td>${s.active}</td></tr>`).join('')}
         </tbody></table></div>`;
       document.getElementById('addSup').onclick = async () => {
-        const name = prompt('Supplier name');
-        if (!name) return;
-        await api('/api/suppliers', {
-          method: 'POST',
-          body: JSON.stringify({ name, phone: prompt('Phone') || '', email: prompt('Email') || '', active: true })
-        });
-        renderInventoryPage();
+        showModal(`<h3>Add supplier</h3>
+          <div class="form-row"><div><label class="field-label">Supplier name *</label><input class="field-input" id="supName"></div></div>
+          <div class="form-row form-row-2"><div><label class="field-label">Phone</label><input class="field-input" id="supPhone"></div>
+          <div><label class="field-label">Email</label><input class="field-input" id="supEmail"></div></div>
+          <div class="modal-footer" style="margin-top:12px;padding:0;border:0">
+            <button type="button" class="btn btn-secondary" id="supCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="supSave">Save supplier</button>
+          </div>`);
+        document.getElementById('supCancel').onclick = closeModal;
+        document.getElementById('supSave').onclick = async () => {
+          const name = document.getElementById('supName').value.trim();
+          if (!name) return toast('Supplier name is required', 'error');
+          await api('/api/suppliers', {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              phone: document.getElementById('supPhone').value || '',
+              email: document.getElementById('supEmail').value || '',
+              active: true
+            })
+          });
+          closeModal();
+          renderInventoryPage();
+        };
       };
     }
     function showReceipts() {
@@ -612,27 +698,45 @@
         ${receipts.map(r => `<tr><td>${r.dateReceived || ''}</td><td>${r.supplier && r.supplier.id}</td><td>${r.billTotal}</td><td>${r.balanceDue}</td></tr>`).join('')}
         </tbody></table></div>`;
       document.getElementById('recvGo').onclick = async () => {
-        const sid = +prompt('Supplier database id');
-        const pid = +prompt('Product database id');
-        const qty = +prompt('Quantity received');
-        const lineTotal = +prompt('Total paid for this line');
-        const pm = prompt('Payment method (CASH/MOBILE/CARD)') || 'CASH';
-        const totPay = +prompt('Total payment amount for PO');
-        const paid = +prompt('Paid amount');
-        if (!sid || !pid || !qty) return;
-        const ub = lineTotal / qty;
-        const body = {
-          supplier: { id: sid },
-          dateReceived: new Date().toISOString().slice(0, 10),
-          paymentMethod: pm,
-          totalPaymentAmount: totPay || lineTotal,
-          paidAmount: paid != null ? paid : lineTotal,
-          balanceDue: (totPay || lineTotal) - (paid != null ? paid : lineTotal),
-          lines: [{ product: { id: pid }, quantityReceived: qty, totalProductPrice: lineTotal, unitBuyingPrice: ub }]
+        const supplierOpts = suppliers.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+        const productOpts = products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+        showModal(`<h3>New receipt (guided)</h3>
+          <div class="form-row form-row-2"><div><label class="field-label">Supplier</label><select class="field-select" id="rcvSupplier">${supplierOpts}</select></div>
+          <div><label class="field-label">Date received</label><input type="date" class="field-input" id="rcvDate" value="${new Date().toISOString().slice(0, 10)}"></div></div>
+          <div class="form-row form-row-3"><div><label class="field-label">Product</label><select class="field-select" id="rcvProduct">${productOpts}</select></div>
+          <div><label class="field-label">Quantity</label><input type="number" class="field-input" id="rcvQty" value="1"></div>
+          <div><label class="field-label">Line total</label><input type="number" class="field-input" id="rcvLineTotal" value="0"></div></div>
+          <div class="form-row form-row-3"><div><label class="field-label">Payment method</label><select class="field-select" id="rcvPM"><option>CASH</option><option>MOBILE</option><option>CARD</option><option>CHEQUE</option></select></div>
+          <div><label class="field-label">Total payment amount</label><input type="number" class="field-input" id="rcvTot" value="0"></div>
+          <div><label class="field-label">Paid amount</label><input type="number" class="field-input" id="rcvPaid" value="0"></div></div>
+          <div class="modal-footer" style="margin-top:12px;padding:0;border:0">
+            <button type="button" class="btn btn-secondary" id="rcvCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="rcvSave">Post receipt</button>
+          </div>`);
+        document.getElementById('rcvCancel').onclick = closeModal;
+        document.getElementById('rcvSave').onclick = async () => {
+          const sid = +document.getElementById('rcvSupplier').value;
+          const pid = +document.getElementById('rcvProduct').value;
+          const qty = +document.getElementById('rcvQty').value || 0;
+          const lineTotal = +document.getElementById('rcvLineTotal').value || 0;
+          if (!sid || !pid || qty <= 0) return toast('Supplier, product and quantity are required', 'error');
+          const ub = qty > 0 ? lineTotal / qty : 0;
+          const totPay = +document.getElementById('rcvTot').value || lineTotal;
+          const paid = +document.getElementById('rcvPaid').value || 0;
+          const body = {
+            supplier: { id: sid },
+            dateReceived: document.getElementById('rcvDate').value || new Date().toISOString().slice(0, 10),
+            paymentMethod: document.getElementById('rcvPM').value || 'CASH',
+            totalPaymentAmount: totPay,
+            paidAmount: paid,
+            balanceDue: totPay - paid,
+            lines: [{ product: { id: pid }, quantityReceived: qty, totalProductPrice: lineTotal, unitBuyingPrice: ub }]
+          };
+          await api('/api/stock-receipts', { method: 'POST', body: JSON.stringify(body) });
+          closeModal();
+          toast('Receipt posted', 'info');
+          renderInventoryPage();
         };
-        await api('/api/stock-receipts', { method: 'POST', body: JSON.stringify(body) });
-        toast('Receipt posted', 'info');
-        renderInventoryPage();
       };
     }
     el.querySelectorAll('[data-tab]').forEach(b => {
@@ -666,15 +770,35 @@
       </tbody></table></div>`;
 
     document.getElementById('addEx').onclick = async () => {
-      const description = prompt('Description');
-      const amount = +prompt('Amount');
-      const category = prompt('Category path (e.g. Facilities expense / Rent)') || 'Other';
-      if (!description) return;
-      await api('/api/expenses', {
-        method: 'POST',
-        body: JSON.stringify({ description, amountPaid: amount, category, paymentMethod: 'CASH', supplierName: 'N/A', expenseDate: new Date().toISOString().slice(0, 10) })
-      });
-      renderAccountingPage();
+      showModal(`<h3>Record expense</h3>
+        <div class="form-row"><div><label class="field-label">Description *</label><input class="field-input" id="exDesc"></div></div>
+        <div class="form-row form-row-3"><div><label class="field-label">Amount</label><input type="number" class="field-input" id="exAmt" value="0"></div>
+        <div><label class="field-label">Category</label><input class="field-input" id="exCat" value="Other"></div>
+        <div><label class="field-label">Payment method</label><select class="field-select" id="exPM"><option>CASH</option><option>MOBILE</option><option>CARD</option><option>CHEQUE</option></select></div></div>
+        <div class="form-row form-row-2"><div><label class="field-label">Supplier name</label><input class="field-input" id="exSup" value="N/A"></div>
+        <div><label class="field-label">Expense date</label><input type="date" class="field-input" id="exDate" value="${new Date().toISOString().slice(0, 10)}"></div></div>
+        <div class="modal-footer" style="margin-top:12px;padding:0;border:0">
+          <button type="button" class="btn btn-secondary" id="exCancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="exSave">Save expense</button>
+        </div>`);
+      document.getElementById('exCancel').onclick = closeModal;
+      document.getElementById('exSave').onclick = async () => {
+        const description = document.getElementById('exDesc').value.trim();
+        if (!description) return toast('Description is required', 'error');
+        await api('/api/expenses', {
+          method: 'POST',
+          body: JSON.stringify({
+            description,
+            amountPaid: +document.getElementById('exAmt').value || 0,
+            category: document.getElementById('exCat').value || 'Other',
+            paymentMethod: document.getElementById('exPM').value || 'CASH',
+            supplierName: document.getElementById('exSup').value || 'N/A',
+            expenseDate: document.getElementById('exDate').value || new Date().toISOString().slice(0, 10)
+          })
+        });
+        closeModal();
+        renderAccountingPage();
+      };
     };
     document.getElementById('addDon').onclick = async () => {
       const name = prompt('Name');
@@ -750,8 +874,24 @@
       el.innerHTML = '<div class="card card-body">Reports are for administrators.</div>';
       return;
     }
-    const r = await api('/api/reports/summary');
-    el.innerHTML = `<div class="card card-body"><p>${escapeHtml(r.message)}</p></div>`;
+    const now = new Date();
+    const end = now.toISOString().slice(0, 10);
+    const start = new Date(now.getTime() - (30 * 24 * 3600 * 1000)).toISOString().slice(0, 10);
+    const r = await api('/api/reports/summary?startDate=' + encodeURIComponent(start) + '&endDate=' + encodeURIComponent(end));
+    const a = r.analytics || {};
+    el.innerHTML = `<div class="section-header"><div><div class="section-title">Reports and analytics</div></div>
+      <button type="button" class="btn btn-primary btn-sm" id="expCsv">Export CSV</button></div>
+      <div class="stats-grid">
+        <div class="stat-card teal"><div class="stat-value">${a.patientsServed ?? 0}</div><div class="stat-label">Patients served</div></div>
+        <div class="stat-card green"><div class="stat-value">${a.newRegistrations ?? 0}</div><div class="stat-label">New registrations</div></div>
+        <div class="stat-card purple"><div class="stat-value">${a.totalRevenue ?? 0}</div><div class="stat-label">Total revenue</div></div>
+        <div class="stat-card red"><div class="stat-value">${a.totalExpenses ?? 0}</div><div class="stat-label">Total expenses</div></div>
+        <div class="stat-card amber"><div class="stat-value">${a.profitLoss ?? 0}</div><div class="stat-label">Profit / loss</div></div>
+        <div class="stat-card teal"><div class="stat-value">${a.averageItemsPerCompletedVisit ?? 0}</div><div class="stat-label">Avg billed items/visit</div></div>
+      </div>`;
+    document.getElementById('expCsv').onclick = () => {
+      window.open('/api/reports/export/csv?startDate=' + encodeURIComponent(start) + '&endDate=' + encodeURIComponent(end), '_blank');
+    };
   }
 
   async function renderLabPage() {

@@ -5,6 +5,7 @@ import com.example.hospital.services.VisitWorkflowService;
 import com.example.hospital.repositories.UserRepository;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -55,6 +56,18 @@ public class HmsVisitController {
         return m;
     }
 
+    private Map<String, Object> labTestRow(LabTest t) {
+        return Map.of(
+                "id", t.getId(),
+                "visitId", t.getVisitId(),
+                "testName", t.getTestName(),
+                "status", t.getStatus().name(),
+                "result", t.getResult() != null ? t.getResult() : "",
+                "referenceRange", t.getReferenceRange() != null ? t.getReferenceRange() : "",
+                "notes", t.getNotes() != null ? t.getNotes() : ""
+        );
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> detail(@PathVariable int id, Authentication auth) {
         Visit v = visitWorkflowService.findVisit(id).orElseThrow();
@@ -94,6 +107,69 @@ public class HmsVisitController {
         root.put("billItems", itemMaps);
         root.put("labTests", labs);
         return ResponseEntity.ok(root);
+    }
+
+    @GetMapping("/{visitId}/lab-results")
+    public ResponseEntity<List<Map<String, Object>>> labResults(@PathVariable int visitId) {
+        List<Map<String, Object>> labResults = visitWorkflowService.labTestsForVisit(visitId).stream()
+                .map(this::labTestRow)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(labResults);
+    }
+
+    @GetMapping("/{visitId}/diagnosis")
+    public ResponseEntity<Map<String, Object>> diagnosis(@PathVariable int visitId) {
+        Visit v = visitWorkflowService.findVisit(visitId).orElseThrow();
+        return ResponseEntity.ok(Map.of(
+                "vitals", v.getVitals() != null ? v.getVitals() : "",
+                "diagnosis", v.getDiagnosis() != null ? v.getDiagnosis() : "",
+                "notes", v.getNotes() != null ? v.getNotes() : ""
+        ));
+    }
+
+    @GetMapping("/{visitId}/doctor")
+    public ResponseEntity<Map<String, Object>> doctorView(@PathVariable int visitId) {
+        Visit v = visitWorkflowService.findVisit(visitId).orElseThrow();
+        return ResponseEntity.ok(Map.of(
+                "diagnosis", Map.of(
+                        "vitals", v.getVitals() != null ? v.getVitals() : "",
+                        "diagnosis", v.getDiagnosis() != null ? v.getDiagnosis() : "",
+                        "notes", v.getNotes() != null ? v.getNotes() : ""
+                ),
+                "labResults", visitWorkflowService.labTestsForVisit(visitId).stream().map(this::labTestRow).collect(Collectors.toList())
+        ));
+    }
+
+    public record CheckoutReq(BigDecimal paidMobile, BigDecimal paidCash, BigDecimal paidCard,
+                               BigDecimal paidCheque, String forwardTo) {}
+
+    @PostMapping("/{visitId}/checkout")
+    public ResponseEntity<Map<String, Object>> checkout(@PathVariable int visitId,
+                                                        @RequestBody CheckoutReq req,
+                                                        Authentication auth) {
+        if (!canSeeMoney(auth)) {
+            return ResponseEntity.status(403).build();
+        }
+        Bill bill = visitWorkflowService.applyPayment(
+                visitId,
+                req.paidMobile(),
+                req.paidCash(),
+                req.paidCard(),
+                req.paidCheque()
+        );
+        Map<String, Object> response = new HashMap<>();
+        response.put("bill", getStringObjectMap(Optional.of(bill), true));
+        if (req.forwardTo() != null && !req.forwardTo().isBlank()) {
+            try {
+                Visit.VisitQueue queue = Visit.VisitQueue.valueOf(req.forwardTo().toUpperCase());
+                Visit forwarded = visitWorkflowService.forward(visitId, queue);
+                response.put("forwardedTo", forwarded.getCurrentQueue().name());
+            } catch (IllegalArgumentException ex) {
+                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Invalid queue: " + req.forwardTo());
+            }
+        }
+        return ResponseEntity.ok(response);
     }
 
     private static @Nullable Map<String, Object> getStringObjectMap(Optional<Bill> billOpt, boolean money) {
@@ -173,7 +249,11 @@ public class HmsVisitController {
     @PostMapping("/{visitId}/forward")
     public ResponseEntity<Visit> forward(@PathVariable int visitId, @RequestBody ForwardReq req) {
         Visit.VisitQueue q = Visit.VisitQueue.valueOf(req.queue().toUpperCase());
-        return ResponseEntity.ok(visitWorkflowService.forward(visitId, q));
+        try {
+            return ResponseEntity.ok(visitWorkflowService.forward(visitId, q));
+        } catch (IllegalStateException ex) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        }
     }
 
     @PostMapping("/{visitId}/complete")
