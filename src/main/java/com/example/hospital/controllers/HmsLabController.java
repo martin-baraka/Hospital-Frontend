@@ -151,6 +151,41 @@ public class HmsLabController {
         return ResponseEntity.ok(labTestService.save(test));
     }
 
+    @PostMapping("/tests/{id}/send-to-clinician")
+    public ResponseEntity<Map<String, Object>> sendToClinician(@PathVariable Integer id, Authentication auth) {
+        User user = userRepository.findByUsername(auth.getName()).orElseThrow();
+        if (!isLabOrAdmin(user)) {
+            return ResponseEntity.status(403).build();
+        }
+
+        Optional<LabTest> opt = labTestService.getById(id);
+        if (opt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        LabTest test = opt.get();
+
+        if (user.getRole() == User.Role.LAB_TECHNICIAN) {
+            if (test.getLabTechnician() == null) {
+                test.setLabTechnician(user);
+            } else if (!test.getLabTechnician().getId().equals(user.getId())) {
+                return ResponseEntity.status(403).build();
+            }
+        }
+
+        Visit visit = test.getVisit();
+        if (visit == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Lab test has no linked visit"));
+        }
+        visit.setCurrentQueue(Visit.VisitQueue.CLINICIAN);
+        visitRepository.save(visit);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Lab results sent to clinician",
+                "visitId", visit.getId(),
+                "currentQueue", visit.getCurrentQueue().name()
+        ));
+    }
+
     @DeleteMapping("/tests/{id}")
     public ResponseEntity<Void> deleteLabTest(@PathVariable Integer id, Authentication auth) {
         User user = userRepository.findByUsername(auth.getName()).orElseThrow();

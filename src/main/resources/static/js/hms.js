@@ -315,6 +315,21 @@
         <input class="field-input" id="labNewName" placeholder="New test name"><button type="button" class="btn btn-sm btn-secondary" id="labAdd">Order test</button>`;
     }
 
+    const allowedForwardTargets = {
+      CASHIER: ['CLINICIAN', 'LAB'],
+      CLINICIAN: ['CASHIER'],
+      LAB: ['CLINICIAN']
+    }[v.currentQueue] || [];
+
+    const forwardButtons = allowedForwardTargets.map(target => {
+      const labels = {
+        CASHIER: 'Send to cashier (billing)',
+        CLINICIAN: 'Send to doctor',
+        LAB: 'Send to lab'
+      };
+      return `<button type="button" class="btn btn-secondary btn-sm" data-fw="${target}">${labels[target]}</button>`;
+    }).join('');
+
     showModal(`<h3>Visit #${v.id} — ${escapeHtml(p.name)}</h3>
       <p><strong>Status:</strong> ${v.status} · <strong>Queue:</strong> ${v.currentQueue}</p>
       ${cashierNotes}
@@ -326,9 +341,7 @@
       ${payForm}
       ${lab}
       <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px">
-        <button type="button" class="btn btn-secondary btn-sm" data-fw="CASHIER">Send to cashier (billing)</button>
-        <button type="button" class="btn btn-secondary btn-sm" data-fw="CLINICIAN">Send to doctor</button>
-        <button type="button" class="btn btn-secondary btn-sm" data-fw="LAB">Send to lab</button>
+        ${forwardButtons}
         <button type="button" class="btn btn-success btn-sm" id="btnCompleteVisit">Complete visit</button>
         <button type="button" class="btn btn-outline btn-sm" id="btnCloseVisit">Close</button>
       </div>`);
@@ -693,10 +706,40 @@
     function showReceipts() {
       document.getElementById('invPane').innerHTML = `
         <p class="section-subtitle">Record stock from supplier; inventory quantities update on save.</p>
-        <button type="button" class="btn btn-sm btn-primary" id="recvGo">New receipt (guided)</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <button type="button" class="btn btn-sm btn-primary" id="recvGo">New receipt (guided)</button>
+          <button type="button" class="btn btn-sm btn-secondary" id="recvAddSupplier">Add supplier</button>
+        </div>
         <div class="card"><table><thead><tr><th>Date</th><th>Supplier id</th><th>Bill total</th><th>Balance due</th></tr></thead><tbody>
         ${receipts.map(r => `<tr><td>${r.dateReceived || ''}</td><td>${r.supplier && r.supplier.id}</td><td>${r.billTotal}</td><td>${r.balanceDue}</td></tr>`).join('')}
         </tbody></table></div>`;
+      document.getElementById('recvAddSupplier').onclick = async () => {
+        showModal(`<h3>Add supplier</h3>
+          <div class="form-row"><div><label class="field-label">Supplier name *</label><input class="field-input" id="supName"></div></div>
+          <div class="form-row form-row-2"><div><label class="field-label">Phone</label><input class="field-input" id="supPhone"></div>
+          <div><label class="field-label">Email</label><input class="field-input" id="supEmail"></div></div>
+          <div class="modal-footer" style="margin-top:12px;padding:0;border:0">
+            <button type="button" class="btn btn-secondary" id="supCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="supSave">Save supplier</button>
+          </div>`);
+        document.getElementById('supCancel').onclick = closeModal;
+        document.getElementById('supSave').onclick = async () => {
+          const name = document.getElementById('supName').value.trim();
+          if (!name) return toast('Supplier name is required', 'error');
+          await api('/api/suppliers', {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              phone: document.getElementById('supPhone').value || '',
+              email: document.getElementById('supEmail').value || '',
+              active: true
+            })
+          });
+          closeModal();
+          toast('Supplier added', 'success');
+          renderInventoryPage();
+        };
+      };
       document.getElementById('recvGo').onclick = async () => {
         const supplierOpts = suppliers.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
         const productOpts = products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
@@ -919,10 +962,25 @@
       <td><span class="badge badge-${t.status === 'COMPLETED' ? 'green' : 'amber'}">${t.status}</span></td>
       <td>${escapeHtml(t.result || '')}</td>
       <td>${escapeHtml(t.labTechnician || 'Unassigned')}</td>
-      <td><button type="button" class="btn btn-sm btn-secondary" data-edit-test="${t.id}">Edit</button></td>
+      <td>
+        <button type="button" class="btn btn-sm btn-secondary" data-edit-test="${t.id}">Edit</button>
+        ${(isLab() || isAdmin()) ? `<button type="button" class="btn btn-sm" data-send-clinician="${t.id}">Send to Clinician</button>` : ''}
+      </td>
     </tr>`).join('') || '<tr><td colspan="6">No lab tests</td></tr>';
     tb.querySelectorAll('[data-edit-test]').forEach(b => {
       b.onclick = () => openEditLabTestForm(+b.dataset.editTest);
+    });
+    tb.querySelectorAll('[data-send-clinician]').forEach(b => {
+      b.onclick = async () => {
+        const testId = +b.dataset.sendClinician;
+        try {
+          await api(`/api/lab/tests/${testId}/send-to-clinician`, { method: 'POST' });
+          toast('Patient sent to clinician for review', 'success');
+          await loadLabTests();
+        } catch (e) {
+          toast('Unable to send results to clinician', 'error');
+        }
+      };
     });
   }
 
